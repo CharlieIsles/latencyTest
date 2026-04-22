@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>BT Latency Test</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px 48px;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #E8764A;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 0.8rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .card {
+            background: #252525;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 440px;
+            margin-bottom: 14px;
+        }
+
+        .card-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 14px;
+        }
+
+        .instructions {
+            font-size: 0.9rem;
+            line-height: 1.7;
+            color: #ccc;
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        button {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button:active { transform: scale(0.97); }
+        button:disabled { opacity: 0.35; cursor: default; transform: none; }
+
+        .btn-primary { background: #E8764A; color: #fff; }
+        .btn-secondary { background: #333; color: #ddd; }
+        .btn-danger { background: #2a1515; color: #d06060; border: 1px solid #3a2020; }
+
+        .btn-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .screen { display: none; }
+        .screen.visible { display: contents; }
+
+        /* Mic level */
+        .level-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .level-label {
+            font-size: 0.75rem;
+            color: #666;
+            width: 34px;
+            flex-shrink: 0;
+        }
+
+        .level-bar-bg {
+            flex: 1;
+            background: #333;
+            border-radius: 4px;
+            height: 22px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #level-bar {
+            height: 100%;
+            width: 0%;
+            background: #4a9e6a;
+            border-radius: 4px;
+        }
+
+        #level-bar.flash {
+            background: #E8764A;
+            transition: none;
+        }
+
+        .threshold-line {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: #E8764A;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .level-rms {
+            font-size: 0.75rem;
+            color: #555;
+            font-variant-numeric: tabular-nums;
+            width: 44px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* Threshold control */
+        .thresh-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .thresh-row label {
+            font-size: 0.78rem;
+            color: #666;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        #threshold-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: #444;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        #threshold-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #E8764A;
+            cursor: pointer;
+        }
+
+        #threshold-value {
+            font-size: 0.78rem;
+            color: #aaa;
+            width: 28px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+
+        /* Status */
+        #status {
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 10px 0 14px;
+            min-height: 40px;
+            color: #888;
+        }
+        #status.listening { color: #64b5f6; }
+        #status.detected  { color: #81c784; }
+        #status.missed    { color: #e57373; }
+
+        /* Latest result */
+        .result-big {
+            text-align: center;
+            padding: 8px 0 16px;
+        }
+
+        .result-num {
+            font-size: 3.5rem;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            color: #E8764A;
+            line-height: 1;
+        }
+
+        .result-unit {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .result-none {
+            font-size: 0.95rem;
+            color: #555;
+            padding: 20px 0;
+        }
+
+        .result-miss-big {
+            font-size: 1.1rem;
+            color: #c05050;
+        }
+
+        /* Stats grid */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .stat {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 10px 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.65rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 1.15rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #bbb;
+        }
+
+        /* Result list */
+        .result-list {
+            max-height: 180px;
+            overflow-y: auto;
+            margin-bottom: 14px;
+        }
+
+        .r-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 2px;
+            border-bottom: 1px solid #2e2e2e;
+            font-size: 0.85rem;
+        }
+
+        .r-item:last-child { border-bottom: none; }
+        .r-idx  { color: #555; font-variant-numeric: tabular-nums; }
+        .r-val  { color: #E8764A; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .r-miss { color: #905050; }
+    </style>
+</head>
+<body>
+
+<h1>BT Latency Test</h1>
+<p class="subtitle">Measures time from scheduled play to mic detection</p>
+
+<!-- SETUP -->
+<div id="screen-setup" class="screen visible">
+    <div class="card">
+        <div class="card-title">Setup</div>
+        <ul class="instructions">
+            <li>1. Connect Bluetooth earbuds to this phone</li>
+            <li>2. Hold one earbud close to (not in) your ear so the phone mic can hear it</li>
+            <li>3. Keep the phone mic unobstructed</li>
+            <li>4. Tap Start and grant microphone permission</li>
+        </ul>
+        <button class="btn-primary" id="btn-start">Start</button>
+    </div>
+</div>
+
+<!-- ACTIVE -->
+<div id="screen-active" class="screen">
+    <div class="card">
+        <div class="card-title">Microphone</div>
+        <div class="level-wrap">
+            <span class="level-label">Level</span>
+            <div class="level-bar-bg">
+                <div id="level-bar"></div>
+                <div class="threshold-line" id="threshold-line"></div>
+            </div>
+            <span class="level-rms" id="level-rms">0.000</span>
+        </div>
+        <div class="thresh-row">
+            <label for="threshold-slider">Sensitivity</label>
+            <input type="range" id="threshold-slider" min="1" max="20" value="4" step="0.5">
+            <span id="threshold-value">4×</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Run Test</div>
+        <div id="status">Ready</div>
+        <div class="btn-row">
+            <button class="btn-primary" id="btn-run-one">Run 1</button>
+            <button class="btn-secondary" id="btn-run-ten">Run 10</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Results</div>
+        <div class="result-big" id="result-big">
+            <div class="result-none">No results yet</div>
+        </div>
+        <div class="stats">
+            <div class="stat"><div class="stat-label">Min</div><div class="stat-value" id="stat-min">—</div></div>
+            <div class="stat"><div class="stat-label">Avg</div><div class="stat-value" id="stat-avg">—</div></div>
+            <div class="stat"><div class="stat-label">Max</div><div class="stat-value" id="stat-max">—</div></div>
+        </div>
+        <div class="result-list" id="result-list"></div>
+        <button class="btn-danger" id="btn-clear">Clear</button>
+    </div>
+</div>
+
+<script>
+(() => {
+    // ── DOM ──────────────────────────────────────────────────────────────
+    const screenSetup  = document.getElementById('screen-setup');
+    const screenActive = document.getElementById('screen-active');
+    const btnStart     = document.getElementById('btn-start');
+    const btnRunOne    = document.getElementById('btn-run-one');
+    const btnRunTen    = document.getElementById('btn-run-ten');
+    const btnClear     = document.getElementById('btn-clear');
+    const levelBar     = document.getElementById('level-bar');
+    const threshLine   = document.getElementById('threshold-line');
+    const threshSlider = document.getElementById('threshold-slider');
+    const threshValEl  = document.getElementById('threshold-value');
+    const levelRmsEl   = document.getElementById('level-rms');
+    const statusEl     = document.getElementById('status');
+    const resultBig    = document.getElementById('result-big');
+    const statMin      = document.getElementById('stat-min');
+    const statAvg      = document.getElementById('stat-avg');
+    const statMax      = document.getElementById('stat-max');
+    const resultList   = document.getElementById('result-list');
+
+    // ── Audio ─────────────────────────────────────────────────────────────
+    let audioCtx   = null;
+    let analyser   = null;
+    let processor  = null;
+    let analyserBuf = null;
+
+    // ── Test config ───────────────────────────────────────────────────────
+    const CLICK_DURATION_S  = 0.02;   // 20ms tone
+    const LOOKAHEAD_S       = 0.3;    // schedule 300ms ahead
+    const NOISE_MEASURE_MS  = 500;    // baseline window
+    const DETECT_TIMEOUT_S  = 2.0;    // give up if not detected
+    const PROC_BUFFER_SIZE  = 256;    // ~5ms at 48kHz
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let threshMult   = 4;
+    let ambientRms   = 0.001;
+    let testState    = 'idle';       // idle | noise | armed | waiting
+    let scheduledAt  = 0;
+    let deadline     = 0;
+    let runQueue     = 0;
+    let results      = [];
+
+    // Noise accumulation
+    let noiseSum   = 0;
+    let noiseCount = 0;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function bufRms(data) {
+        let s = 0;
+        for (let i = 0; i < data.length; i++) s += data[i] * data[i];
+        return Math.sqrt(s / data.length);
+    }
+
+    function setStatus(msg, cls = '') {
+        statusEl.textContent = msg;
+        statusEl.className = cls;
+    }
+
+    function setBusy(busy) {
+        btnRunOne.disabled = busy;
+        btnRunTen.disabled = busy;
+    }
+
+    // ── Click synthesis ───────────────────────────────────────────────────
+    function makeClick() {
+        const sr  = audioCtx.sampleRate;
+        const len = Math.round(CLICK_DURATION_S * sr);
+        const buf = audioCtx.createBuffer(1, len, sr);
+        const d   = buf.getChannelData(0);
+        const ramp = Math.round(0.002 * sr);  // 2ms ramp in/out
+
+        for (let i = 0; i < len; i++) {
+            const t   = i / sr;
+            let env   = 1.0;
+            if (i < ramp)        env = i / ramp;
+            else if (i > len - ramp) env = (len - i) / ramp;
+            d[i] = Math.sin(2 * Math.PI * 1000 * t) * env * 0.8;
+        }
+        return buf;
+    }
+
+    // ── Init audio ────────────────────────────────────────────────────────
+    async function initAudio() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl:  false
+            }
+        });
+
+        const micSrc = audioCtx.createMediaStreamSource(stream);
+
+        // Analyser for level visualization
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.6;
+        analyserBuf = new Float32Array(analyser.fftSize);
+        micSrc.connect(analyser);
+
+        // ScriptProcessor for onset detection
+        // Route through silent gain so mic audio is not played back to speakers
+        processor = audioCtx.createScriptProcessor(PROC_BUFFER_SIZE, 1, 1);
+        const silence = audioCtx.createGain();
+        silence.gain.value = 0;
+
+        processor.onaudioprocess = onProcess;
+        micSrc.connect(processor);
+        processor.connect(silence);
+        silence.connect(audioCtx.destination); // must reach destination to run
+    }
+
+    // ── ScriptProcessor callback ──────────────────────────────────────────
+    function onProcess(e) {
+        const data  = e.inputBuffer.getChannelData(0);
+        const level = bufRms(data);
+        const now   = audioCtx.currentTime;
+
+        if (testState === 'noise') {
+            noiseSum   += level * level;
+            noiseCount += 1;
+            return;
+        }
+
+        // Transition armed → waiting once we reach the scheduled play time
+        if (testState === 'armed' && now >= scheduledAt) {
+            testState = 'waiting';
+        }
+
+        if (testState === 'waiting') {
+            const thresh = ambientRms * threshMult;
+            if (level > thresh) {
+                const latencyMs = (now - scheduledAt) * 1000;
+                testState = 'idle';
+                onDetect(latencyMs);
+            } else if (now > deadline) {
+                testState = 'idle';
+                onMiss();
+            }
+        }
+    }
+
+    // ── Baseline measurement ──────────────────────────────────────────────
+    function measureNoise() {
+        return new Promise(resolve => {
+            noiseSum   = 0;
+            noiseCount = 0;
+            testState  = 'noise';
+            setTimeout(() => {
+                testState  = 'idle';
+                ambientRms = noiseCount > 0
+                    ? Math.sqrt(noiseSum / noiseCount)
+                    : 0.001;
+                resolve();
+            }, NOISE_MEASURE_MS);
+        });
+    }
+
+    // ── Single test ───────────────────────────────────────────────────────
+    async function runOneTest() {
+        setBusy(true);
+        setStatus('Measuring noise baseline…');
+
+        await measureNoise();
+
+        setStatus('Listening…', 'listening');
+
+        // Schedule click using BufferSourceNode.start(scheduledTime)
+        const src = audioCtx.createBufferSource();
+        src.buffer = makeClick();
+        src.connect(audioCtx.destination);
+
+        scheduledAt = audioCtx.currentTime + LOOKAHEAD_S;
+        deadline    = scheduledAt + DETECT_TIMEOUT_S;
+        src.start(scheduledAt);
+
+        testState = 'armed';
+
+        // Poll until the processor sets testState back to 'idle'
+        const poll = setInterval(() => {
+            if (testState === 'idle') {
+                clearInterval(poll);
+                afterTest();
+            }
+        }, 50);
+    }
+
+    function afterTest() {
+        if (runQueue > 0) {
+            runQueue--;
+            setTimeout(runOneTest, 700);
+        } else {
+            setBusy(false);
+        }
+    }
+
+    // ── Detection / miss ──────────────────────────────────────────────────
+    function onDetect(latencyMs) {
+        setStatus(`Detected: ${latencyMs.toFixed(1)} ms`, 'detected');
+        levelBar.classList.add('flash');
+        setTimeout(() => levelBar.classList.remove('flash'), 500);
+        results.push({ latency: latencyMs });
+        renderResults();
+    }
+
+    function onMiss() {
+        setStatus('No detection — earbud sealed? Try adjusting.', 'missed');
+        results.push({ missed: true });
+        renderResults();
+    }
+
+    // ── Results ───────────────────────────────────────────────────────────
+    function renderResults() {
+        const good   = results.filter(r => !r.missed).map(r => r.latency);
+        const last   = results[results.length - 1];
+        const misses = results.filter(r => r.missed).length;
+
+        // Big display
+        if (good.length === 0) {
+            resultBig.innerHTML = `<div class="result-miss-big">No detection${misses > 1 ? ` (${misses})` : ''}</div>`;
+        } else if (last && last.missed) {
+            resultBig.innerHTML = `<div class="result-miss-big">No detection</div>`;
+        } else if (last) {
+            resultBig.innerHTML = `
+                <div class="result-num">${last.latency.toFixed(1)}</div>
+                <div class="result-unit">milliseconds</div>
+            `;
+        }
+
+        // Stats
+        if (good.length > 0) {
+            const mn  = Math.min(...good);
+            const mx  = Math.max(...good);
+            const avg = good.reduce((a, b) => a + b, 0) / good.length;
+            statMin.textContent = mn.toFixed(1);
+            statAvg.textContent = avg.toFixed(1);
+            statMax.textContent = mx.toFixed(1);
+        } else {
+            statMin.textContent = '—';
+            statAvg.textContent = '—';
+            statMax.textContent = '—';
+        }
+
+        // List (newest first)
+        resultList.innerHTML = '';
+        [...results].reverse().forEach((r, i) => {
+            const idx = results.length - i;
+            const el  = document.createElement('div');
+            el.className = 'r-item';
+            if (r.missed) {
+                el.innerHTML = `<span class="r-idx">#${idx}</span><span class="r-miss">no detection</span>`;
+            } else {
+                el.innerHTML = `<span class="r-idx">#${idx}</span><span class="r-val">${r.latency.toFixed(1)} ms</span>`;
+            }
+            resultList.appendChild(el);
+        });
+    }
+
+    // ── Level bar (RAF) ───────────────────────────────────────────────────
+    function animateLevel() {
+        requestAnimationFrame(animateLevel);
+        if (!analyser || !analyserBuf) return;
+
+        analyser.getFloatTimeDomainData(analyserBuf);
+        let peak = 0;
+        for (let i = 0; i < analyserBuf.length; i++) {
+            const v = Math.abs(analyserBuf[i]);
+            if (v > peak) peak = v;
+        }
+
+        // Scale: peak 0.1 → ~100% bar
+        const pct = Math.min(peak * 800, 100);
+        if (!levelBar.classList.contains('flash')) {
+            levelBar.style.width = pct + '%';
+        }
+        levelRmsEl.textContent = peak.toFixed(3);
+
+        // Threshold indicator line
+        if (ambientRms > 0) {
+            const threshPeak = ambientRms * threshMult;
+            const linePct    = Math.min(threshPeak * 800, 98);
+            threshLine.style.left = linePct + '%';
+        }
+    }
+
+    // ── Threshold slider ──────────────────────────────────────────────────
+    threshSlider.addEventListener('input', () => {
+        threshMult = parseFloat(threshSlider.value);
+        threshValEl.textContent = threshMult + '×';
+    });
+
+    // ── Buttons ───────────────────────────────────────────────────────────
+    btnStart.addEventListener('click', async () => {
+        btnStart.disabled = true;
+        btnStart.textContent = 'Starting…';
+        try {
+            await initAudio();
+            screenSetup.classList.remove('visible');
+            screenActive.classList.add('visible');
+            requestAnimationFrame(animateLevel);
+            setStatus('Ready');
+        } catch (err) {
+            btnStart.disabled = false;
+            btnStart.textContent = 'Start';
+            alert('Microphone error: ' + err.message);
+        }
+    });
+
+    btnRunOne.addEventListener('click', () => {
+        runQueue = 0;
+        runOneTest();
+    });
+
+    btnRunTen.addEventListener('click', () => {
+        runQueue = 9;
+        runOneTest();
+    });
+
+    btnClear.addEventListener('click', () => {
+        results = [];
+        renderResults();
+        resultBig.innerHTML = '<div class="result-none">No results yet</div>';
+        statMin.textContent = '—';
+        statAvg.textContent = '—';
+        statMax.textContent = '—';
+        setStatus('Ready');
+    });
+})();
+</script>
+
+</body>
+</html>
