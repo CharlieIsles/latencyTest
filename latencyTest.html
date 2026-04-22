@@ -369,7 +369,7 @@
     let analyserBuf = null;
 
     // ── Test config ───────────────────────────────────────────────────────
-    const CLICK_DURATION_S  = 0.02;   // 20ms tone
+    const CLICK_DURATION_S  = 0.08;   // 80ms tone
     const LOOKAHEAD_S       = 0.3;    // schedule 300ms ahead
     const NOISE_MEASURE_MS  = 500;    // baseline window
     const DETECT_TIMEOUT_S  = 2.0;    // give up if not detected
@@ -418,7 +418,7 @@
             let env   = 1.0;
             if (i < ramp)        env = i / ramp;
             else if (i > len - ramp) env = (len - i) / ramp;
-            d[i] = Math.sin(2 * Math.PI * 1000 * t) * env * 0.8;
+            d[i] = Math.sin(2 * Math.PI * 1000 * t) * env * 1.0;
         }
         return buf;
     }
