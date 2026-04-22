@@ -418,7 +418,9 @@
             let env   = 1.0;
             if (i < ramp)        env = i / ramp;
             else if (i > len - ramp) env = (len - i) / ramp;
-            d[i] = Math.sin(2 * Math.PI * 1000 * t) * env * 1.0;
+            const noise = (Math.random() * 2 - 1) * 0.5;
+            const tone  = Math.sin(2 * Math.PI * 1000 * t) * 0.5;
+            d[i] = (tone + noise) * env;
         }
         return buf;
     }
