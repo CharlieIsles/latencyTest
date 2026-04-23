@@ -116,6 +116,19 @@
         .h-item:last-child { border-bottom: none; }
         .h-n { color: #555; }
         .h-v { color: #E8764A; font-weight: 600; }
+
+        /* Segmented tap-count selector */
+        .seg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .seg {
+            padding: 10px 0; border: 2px solid #444; border-radius: 8px;
+            background: #1e1e1e; color: #888; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent; transition: all 0.15s;
+        }
+        .seg.active { border-color: #E8764A; color: #E8764A; background: #2a1a0e; }
+
+        /* Outlier row in breakdown */
+        .bd-outlier { color: #888; text-decoration: line-through; }
     </style>
 </head>
 <body>
@@ -129,11 +142,18 @@
         <div class="card-title">How it works</div>
         <ul class="instructions">
             <li>🎧 Put your Bluetooth earbuds in</li>
-            <li>1. You'll hear 4 green beeps — just feel the rhythm</li>
-            <li>2. Then 4 orange beeps — tap the circle each time you <em>hear</em> one</li>
+            <li>1. You'll hear 4 feel beeps — just feel the rhythm</li>
+            <li>2. Then tap beeps — tap the circle each time you <em>hear</em> one</li>
             <li>Tap when you hear it, not when you expect it</li>
         </ul>
-        <button class="btn-primary" id="btn-start">Start</button>
+        <div class="card-title" style="margin-top:16px">Tap count</div>
+        <div class="seg-row" id="tap-count-btns">
+            <button class="seg" data-n="2">2</button>
+            <button class="seg" data-n="4">4</button>
+            <button class="seg active" data-n="8">8</button>
+            <button class="seg" data-n="16">16</button>
+        </div>
+        <button class="btn-primary" style="margin-top:16px" id="btn-start">Start</button>
     </div>
     <div class="card" id="history-card" style="display:none">
         <div class="card-title">Past results</div>
@@ -169,16 +189,17 @@
 <script>
 (() => {
     // ── Config ────────────────────────────────────────────────────────────
-    const BPM         = 100;
-    const PERIOD_S    = 60 / BPM;   // 0.6 s
-    const TOTAL_BEATS = 8;
-    const TAP_START   = 4;          // beats 0-3 = feel, 4-7 = tap
-    const LEAD_IN_S   = 0.8;
+    const BPM       = 100;
+    const PERIOD_S  = 60 / BPM;   // 0.6 s
+    const TAP_START = 4;           // always 4 feel beats
+    const LEAD_IN_S = 0.8;
+    let   tapCount  = 8;           // user-configurable
 
     // ── DOM ───────────────────────────────────────────────────────────────
     const screenSetup   = document.getElementById('screen-setup');
     const screenActive  = document.getElementById('screen-active');
     const screenResults = document.getElementById('screen-results');
+    const tapCountBtns  = document.getElementById('tap-count-btns');
     const btnStart      = document.getElementById('btn-start');
     const btnGo         = document.getElementById('btn-go');
     const btnAgain      = document.getElementById('btn-again');
@@ -268,7 +289,7 @@
         beatStartTime = audioCtx.currentTime + LEAD_IN_S;
 
         // Schedule all 8 beeps
-        for (let i = 0; i < TOTAL_BEATS; i++) {
+        for (let i = 0; i < (TAP_START + tapCount); i++) {
             scheduleBeep(beatStartTime + i * PERIOD_S, i >= TAP_START);
         }
 
@@ -283,7 +304,7 @@
         });
 
         // End: collect results
-        at(beatStartTime + TOTAL_BEATS * PERIOD_S + 0.6, finish);
+        at(beatStartTime + (TAP_START + tapCount) * PERIOD_S + 0.6, finish);
     }
 
     // ── Tap handling ──────────────────────────────────────────────────────
@@ -297,7 +318,7 @@
         tapZone.classList.add('flash');
         setTimeout(() => tapZone.classList.remove('flash'), 100);
 
-        if (tapTimes.length >= 4) tapPhaseOn = false;
+        if (tapTimes.length >= tapCount) tapPhaseOn = false;
     }
 
     tapZone.addEventListener('touchstart', onTap, { passive: false });
@@ -305,20 +326,31 @@
 
     // ── Compute latency ───────────────────────────────────────────────────
     function computeLatency(taps) {
-        // raw offset for each tap vs its corresponding scheduled beep
         const offsets = taps.map((t, i) => (t - (beatStartTime + (TAP_START + i) * PERIOD_S)) * 1000);
 
-        const avg     = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+        // First pass: find outlier (largest deviation from mean)
+        const avg1 = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+        let outlierIdx = 0, maxDev = -1;
+        offsets.forEach((o, i) => {
+            const dev = Math.abs(o - avg1);
+            if (dev > maxDev) { maxDev = dev; outlierIdx = i; }
+        });
+
+        // Second pass: average without the outlier (requires at least 3 taps)
+        const trimmed = offsets.length > 2
+            ? offsets.filter((_, i) => i !== outlierIdx)
+            : offsets;
+        const avg2 = trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+
+        // Remove whole-period ambiguity
         const periodMs = PERIOD_S * 1000;
+        const N        = Math.round(avg2 / periodMs);
+        const latency  = avg2 - N * periodMs;
 
-        // Remove whole-period ambiguity (handles tapping one beat behind)
-        const N       = Math.round(avg / periodMs);
-        const latency = avg - N * periodMs;
-
-        const variance = offsets.reduce((a, b) => a + (b - avg) ** 2, 0) / offsets.length;
+        const variance = trimmed.reduce((a, b) => a + (b - avg2) ** 2, 0) / trimmed.length;
         const spread   = Math.sqrt(variance);
 
-        return { latency, offsets, spread };
+        return { latency, offsets, outlierIdx, droppedOutlier: offsets.length > 2, spread };
     }
 
     function finish() {
@@ -333,7 +365,7 @@
             return;
         }
 
-        const { latency, offsets, spread } = computeLatency(tapTimes);
+        const { latency, offsets, outlierIdx, droppedOutlier, spread } = computeLatency(tapTimes);
 
         resultBig.innerHTML = `
             <div class="result-num">${latency.toFixed(1)}</div>
@@ -342,13 +374,17 @@
 
         breakdownEl.innerHTML = '';
         offsets.forEach((off, i) => {
+            const isOutlier = droppedOutlier && i === outlierIdx;
             const li = document.createElement('li');
-            li.innerHTML = `<span class="bd-label">Tap ${i + 1}</span><span class="bd-val">${off >= 0 ? '+' : ''}${off.toFixed(1)} ms</span>`;
+            li.innerHTML = isOutlier
+                ? `<span class="bd-label bd-outlier">Tap ${i + 1} (dropped)</span><span class="bd-val bd-outlier">${off >= 0 ? '+' : ''}${off.toFixed(1)} ms</span>`
+                : `<span class="bd-label">Tap ${i + 1}</span><span class="bd-val">${off >= 0 ? '+' : ''}${off.toFixed(1)} ms</span>`;
             breakdownEl.appendChild(li);
         });
 
+        const usedCount = droppedOutlier ? offsets.length - 1 : offsets.length;
         statsRow.innerHTML = `
-            <div class="stat"><div class="stat-lbl">Taps used</div><div class="stat-val">${offsets.length}</div></div>
+            <div class="stat"><div class="stat-lbl">Taps used</div><div class="stat-val">${usedCount} / ${offsets.length}</div></div>
             <div class="stat"><div class="stat-lbl">Spread ±</div><div class="stat-val">${spread.toFixed(1)} ms</div></div>
         `;
 
@@ -369,6 +405,14 @@
             historyList.appendChild(el);
         });
     }
+
+    // ── Tap count selector ────────────────────────────────────────────────
+    tapCountBtns.addEventListener('click', e => {
+        const btn = e.target.closest('.seg');
+        if (!btn) return;
+        tapCount = parseInt(btn.dataset.n, 10);
+        tapCountBtns.querySelectorAll('.seg').forEach(b => b.classList.toggle('active', b === btn));
+    });
 
     // ── Buttons ───────────────────────────────────────────────────────────
     btnStart.addEventListener('click', goToActive);
