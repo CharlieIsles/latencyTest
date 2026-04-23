@@ -144,7 +144,6 @@
 <!-- ACTIVE -->
 <div id="screen-active" class="screen">
     <div class="phase-label" id="phase-label">Get ready…</div>
-    <div class="beat-row" id="beat-row"></div>
     <div class="tap-zone" id="tap-zone">
         <span class="tap-main" id="tap-main">·</span>
         <span class="tap-sub"  id="tap-sub">listen</span>
@@ -184,7 +183,6 @@
     const btnGo         = document.getElementById('btn-go');
     const btnAgain      = document.getElementById('btn-again');
     const btnBack       = document.getElementById('btn-back');
-    const beatRow       = document.getElementById('beat-row');
     const tapZone       = document.getElementById('tap-zone');
     const tapMain       = document.getElementById('tap-main');
     const tapSub        = document.getElementById('tap-sub');
@@ -216,27 +214,7 @@
 
     function clearTimers() { timers.forEach(clearTimeout); timers = []; }
 
-    // ── Beat dots ─────────────────────────────────────────────────────────
-    function buildDots() {
-        beatRow.innerHTML = '';
-        for (let i = 0; i < TOTAL_BEATS; i++) {
-            const d = document.createElement('div');
-            d.className = 'beat-dot ' + (i < TAP_START ? 'feel' : 'tap-beat');
-            d.textContent = i + 1;
-            d.id = 'dot' + i;
-            beatRow.appendChild(d);
-        }
-    }
-
-    function pulseDot(i, tapped = false) {
-        const d = document.getElementById('dot' + i);
-        if (!d) return;
-        if (tapped) d.classList.add('tapped');
-        d.classList.add('pulse');
-        setTimeout(() => { d.classList.remove('pulse'); d.classList.add('done'); }, 200);
-    }
-
-    // ── Sound synthesis ───────────────────────────────────────────────────
+// ── Sound synthesis ───────────────────────────────────────────────────
     function scheduleBeep(time, isTap) {
         const sr   = audioCtx.sampleRate;
         const dur  = 0.06;
@@ -264,7 +242,7 @@
     async function goToActive() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
-        buildDots();
+
         tapZone.classList.remove('enabled', 'flash');
         tapMain.textContent    = '·';
         tapSub.textContent     = 'listen';
@@ -280,7 +258,7 @@
         tapPhaseOn = false;
         btnGo.disabled = true;
 
-        buildDots();
+
         tapZone.classList.remove('enabled', 'flash');
         tapMain.textContent    = '·';
         tapSub.textContent     = 'listen';
@@ -294,25 +272,15 @@
             scheduleBeep(beatStartTime + i * PERIOD_S, i >= TAP_START);
         }
 
-        // Visual callbacks at scheduled beat times
-        for (let i = 0; i < TOTAL_BEATS; i++) {
-            const beatTime = beatStartTime + i * PERIOD_S;
-            at(beatTime, () => {
-                pulseDot(i);
-                if (i === TAP_START - 1) {
-                    // One feel-beat before tap phase: heads-up
-                    phaseLabel.textContent = 'Next: tap each beep…';
-                }
-                if (i === TAP_START) {
-                    phaseLabel.textContent = 'TAP each beep you hear';
-                    phaseLabel.classList.add('tap-phase');
-                    tapZone.classList.add('enabled');
-                    tapMain.textContent = 'TAP';
-                    tapSub.textContent  = 'when you hear it';
-                    tapPhaseOn = true;
-                }
-            });
-        }
+        // Enable tap zone at beat 4 (no per-beat visuals — screen must not cue timing)
+        at(beatStartTime + TAP_START * PERIOD_S, () => {
+            phaseLabel.textContent = 'TAP each beep you hear';
+            phaseLabel.classList.add('tap-phase');
+            tapZone.classList.add('enabled');
+            tapMain.textContent = 'TAP';
+            tapSub.textContent  = 'when you hear it';
+            tapPhaseOn = true;
+        });
 
         // End: collect results
         at(beatStartTime + TOTAL_BEATS * PERIOD_S + 0.6, finish);
@@ -329,8 +297,6 @@
         tapZone.classList.add('flash');
         setTimeout(() => tapZone.classList.remove('flash'), 100);
 
-        const idx = tapTimes.length - 1;
-        if (idx < TOTAL_BEATS - TAP_START) pulseDot(TAP_START + idx, true);
         if (tapTimes.length >= 4) tapPhaseOn = false;
     }
 
